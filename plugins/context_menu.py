@@ -1,376 +1,234 @@
 #!/usr/bin/python3
 """
-Compact right-click context menu for Kitty.
-Runs as --type=overlay kitten.
-Appears at the click position; click outside or Esc/q closes it.
-
-Usage: context_menu.py [mouse_x] [mouse_y]   (0-indexed cell coords from kitty)
+Kitty right-click context menu — native GTK4 popup at mouse cursor.
+Works on KDE Wayland. Appears as a floating window at cursor position.
+Click item to execute, click outside or Escape to dismiss.
 """
 
-import os
-import select
 import subprocess
-import sys
-import termios
-import tty
-
-# ---------------------------------------------------------------------------
-# Remote-control helpers
-# ---------------------------------------------------------------------------
-
-def krc(*args):
-    subprocess.run(["kitty", "@"] + list(args), capture_output=True, text=True)
+import gi
+gi.require_version('Gtk', '4.0')
+gi.require_version('Gdk', '4.0')
+from gi.repository import Gtk, Gdk, GLib
 
 
-def krc_parent(*args):
-    krc(*args, "--match=recent:1")
+# ── Dracula Pro palette ──────────────────────────────────────
+CSS = """
+window.context-menu {
+    background-color: #282A36;
+    border: 2px solid #BD93F9;
+    border-radius: 10px;
+    padding: 4px 0;
+}
+window.context-menu .title-label {
+    color: #FFB86C;
+    font-weight: bold;
+    font-size: 11px;
+    padding: 4px 14px 2px 14px;
+}
+window.context-menu .menu-row {
+    padding: 5px 14px;
+    border-radius: 6px;
+    margin: 1px 6px;
+    transition: background-color 100ms;
+}
+window.context-menu .menu-row:hover {
+    background-color: #44475A;
+}
+window.context-menu .menu-row .icon-label {
+    color: #BD93F9;
+    font-size: 14px;
+    min-width: 22px;
+}
+window.context-menu .menu-row:hover .icon-label {
+    color: #FF79C6;
+}
+window.context-menu .menu-row .text-label {
+    color: #F8F8F2;
+    font-size: 13px;
+}
+window.context-menu .menu-row:hover .text-label {
+    color: #BD93F9;
+    font-weight: bold;
+}
+window.context-menu .sep {
+    min-height: 1px;
+    background-color: #6272A4;
+    margin: 3px 14px;
+    opacity: 0.35;
+}
+"""
+
+def find_kitty_socket():
+    try:
+        r = subprocess.run(['pgrep', '-x', 'kitty'],
+                           capture_output=True, text=True, timeout=2)
+        for pid in r.stdout.strip().split('\n'):
+            pid = pid.strip()
+            if pid:
+                return f'unix:@kitty-{pid}'
+    except Exception:
+        pass
+    return None
+
+
+def kcmd(*args):
+    sock = find_kitty_socket()
+    if not sock:
+        return
+    subprocess.Popen(['kitty', '@', '--to', sock] + list(args),
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 def do_copy():
-    r = subprocess.run(
-        ["kitty", "@", "get-text", "--match=recent:1", "--extent=selection"],
-        capture_output=True, text=True,
-    )
-    if r.stdout.strip():
-        for cmd in (["wl-copy"], ["xclip", "-selection", "clipboard"]):
-            try:
-                subprocess.run(cmd, input=r.stdout, text=True,
-                               capture_output=True, check=True)
-                return
-            except (FileNotFoundError, subprocess.CalledProcessError):
-                continue
+    sock = find_kitty_socket()
+    if not sock:
+        return
+    try:
+        r = subprocess.run(
+            ['kitty', '@', '--to', sock, 'get-text', '--extent=selection'],
+            capture_output=True, text=True, timeout=3)
+        if r.stdout.strip():
+            subprocess.run(['wl-copy'], input=r.stdout, text=True,
+                           capture_output=True, timeout=3)
+    except Exception:
+        pass
 
 
-# ---------------------------------------------------------------------------
-# Menu definition  (None = separator)
-# ---------------------------------------------------------------------------
-
+# (icon, label, callback) or None = separator
 MENU = [
-    ("  Copy",            do_copy),
-    ("  Paste",           lambda: krc_parent("paste-from-clipboard")),
-    ("  Paste Selection", lambda: krc_parent("paste-from-selection")),
+    ('\U000F0190', 'Copy',            do_copy),
+    ('\U000F0192', 'Paste',           lambda: kcmd('send-key', 'ctrl+shift+v')),
+    ('\U000F0193', 'Paste Sel',       lambda: kcmd('paste-from-selection')),
     None,
-    ("  New Tab",         lambda: krc("new-window", "--new-tab", "--cwd=current")),
-    ("  New Window",      lambda: krc("new-window", "--cwd=current", "--match=recent:1")),
-    ("  Close Tab",       lambda: krc_parent("close-tab")),
+    ('\U000F0425', 'New Tab',         lambda: kcmd('launch', '--type=tab', '--cwd=current')),
+    ('\U000F0425', 'New Window',      lambda: kcmd('launch', '--cwd=current')),
+    ('\U000F0156', 'Close Tab',       lambda: kcmd('close-tab')),
     None,
-    ("  Scroll Up",       lambda: krc_parent("scroll-window", "scroll-up", "3")),
-    ("  Scroll Down",     lambda: krc_parent("scroll-window", "scroll-down", "3")),
-    ("  Scroll to Top",   lambda: krc_parent("scroll-window", "start")),
+    ('\U000F0485', 'Split V',         lambda: kcmd('launch', '--cwd=current', '--location=vsplit')),
+    ('\U000F0484', 'Split H',         lambda: kcmd('launch', '--cwd=current', '--location=hsplit')),
     None,
-    ("  Clear",           lambda: krc_parent("send-text", "--", "clear\n")),
-    ("  Reload Config",   lambda: krc("load-config")),
+    ('\U000F005D', 'Scroll Up',       lambda: kcmd('scroll-window', '3')),
+    ('\U000F005E', 'Scroll Down',     lambda: kcmd('scroll-window', '-3')),
+    ('\U000F005C', 'Top',             lambda: kcmd('scroll-window', 'start')),
+    None,
+    ('\U000F0234', 'Clear',           lambda: kcmd('send-text', 'clear\n')),
+    ('\U000F0453', 'Reload Cfg',      lambda: kcmd('load-config')),
+    None,
+    ('\U000F024B', 'Yazi',            lambda: kcmd('launch', '--cwd=current', '--type=window', 'yazi')),
 ]
 
-# ---------------------------------------------------------------------------
-# ANSI helpers
-# ---------------------------------------------------------------------------
 
-ESC = "\x1b"
+class MenuWindow(Gtk.ApplicationWindow):
 
+    def __init__(self, app):
+        super().__init__(application=app)
+        self.add_css_class('context-menu')
+        self.set_decorated(False)
+        self.set_resizable(False)
+        self.set_default_size(220, -1)
 
-def cup(row, col):
-    return f"{ESC}[{row};{col}H"
+        vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
 
+        # Title
+        title = Gtk.Label(label='Context Menu')
+        title.add_css_class('title-label')
+        title.set_halign(Gtk.Align.START)
+        vbox.append(title)
 
-def rgb_fg(r, g, b):
-    return f"{ESC}[38;2;{r};{g};{b}m"
-
-
-def rgb_bg(r, g, b):
-    return f"{ESC}[48;2;{r};{g};{b}m"
-
-
-RESET = ESC + "[0m"
-BOLD  = ESC + "[1m"
-DIM   = ESC + "[2m"
-
-# Dracula palette
-C_BOX_BG = (40,  42,  54)     # #282A36  box interior
-C_BORDER = (189, 147, 249)    # #BD93F9  purple border
-C_SEL_BG = (68,  71,  90)     # #44475A  selected bg
-C_SEL_FG = (189, 147, 249)    # #BD93F9  selected fg
-C_NORMAL = (248, 248, 242)    # #F8F8F2  normal text
-C_TITLE  = (255, 184, 108)    # #FFB86C  orange title
-C_SEP    = (98,  114, 164)    # #6272A4  dim
-C_HINT   = (98,  114, 164)
-
-INNER_W  = 24   # content width inside border chars
-BOX_W    = INNER_W + 2  # total box width incl. borders
-
-
-# ---------------------------------------------------------------------------
-# Terminal size
-# ---------------------------------------------------------------------------
-
-def get_term_size():
-    import struct, fcntl
-    try:
-        result = fcntl.ioctl(sys.stdout.fileno(), termios.TIOCGWINSZ, b"0000")
-        rows, cols = struct.unpack("hh", result)
-        return max(rows, 10), max(cols, 40)
-    except Exception:
-        return 24, 80
-
-
-# ---------------------------------------------------------------------------
-# Layout — calculated from click position
-# ---------------------------------------------------------------------------
-
-def calc_box_pos(click_col, click_row, term_rows, term_cols):
-    """
-    Place box so it appears near the click position.
-    Shift left/up if it would go off-screen.
-    """
-    box_height = 2 + 1 + len(MENU) + 1  # top border + title + title-sep + items + bottom border
-    # Try to appear just below and at the click column
-    left = click_col
-    top  = click_row
-
-    # Clamp right edge
-    if left + BOX_W > term_cols:
-        left = max(1, term_cols - BOX_W)
-
-    # Clamp bottom edge
-    if top + box_height + 1 > term_rows:
-        top = max(1, term_rows - box_height - 1)
-
-    return left, top
-
-
-def box_row_at(box_top, content_row):
-    """content_row 0=title, 1=title-sep, 2..=items -> terminal row."""
-    return box_top + 1 + content_row
-
-
-def build_item_rows(box_top):
-    mapping = {}
-    content_row = 2   # 0=title, 1=sep, 2..=items
-    for idx, item in enumerate(MENU):
-        tr = box_row_at(box_top, content_row)
-        if item is not None:
-            mapping[tr] = idx
-        content_row += 1
-    return mapping
-
-
-# ---------------------------------------------------------------------------
-# Rendering
-# ---------------------------------------------------------------------------
-
-def render(sel_idx, box_left, box_top, out):
-    buf = []
-
-    bdr = rgb_fg(*C_BORDER) + rgb_bg(*C_BOX_BG)
-    box = rgb_bg(*C_BOX_BG)
-
-    # Top border
-    buf.append(cup(box_top, box_left))
-    buf.append(bdr + "\u256d" + "\u2500" * INNER_W + "\u256e" + RESET)
-
-    # Title
-    title_text = "  Context Menu"
-    buf.append(cup(box_top + 1, box_left))
-    buf.append(bdr + "\u2502" + RESET)
-    buf.append(box + rgb_fg(*C_TITLE) + BOLD)
-    buf.append(title_text.ljust(INNER_W))
-    buf.append(RESET + bdr + "\u2502" + RESET)
-
-    # Title separator
-    buf.append(cup(box_top + 2, box_left))
-    buf.append(bdr + "\u251c" + "\u2500" * INNER_W + "\u2524" + RESET)
-
-    # Items
-    content_row = 2
-    for idx, item in enumerate(MENU):
-        tr = box_row_at(box_top, content_row)
-        buf.append(cup(tr, box_left))
-        if item is None:
-            buf.append(bdr + "\u2502" + RESET)
-            buf.append(rgb_fg(*C_SEP) + DIM + "\u2500" * INNER_W + RESET)
-            buf.append(bdr + "\u2502" + RESET)
-        else:
-            label, _ = item
-            is_sel = (idx == sel_idx)
-            buf.append(bdr + "\u2502" + RESET)
-            if is_sel:
-                display = ("\u276f " + label.lstrip())[:INNER_W].ljust(INNER_W)
-                buf.append(rgb_bg(*C_SEL_BG) + rgb_fg(*C_SEL_FG) + BOLD + display + RESET)
-            else:
-                display = label[:INNER_W].ljust(INNER_W)
-                buf.append(box + rgb_fg(*C_NORMAL) + display + RESET)
-            buf.append(bdr + "\u2502" + RESET)
-        content_row += 1
-
-    # Bottom border
-    bottom_tr = box_row_at(box_top, content_row)
-    buf.append(cup(bottom_tr, box_left))
-    buf.append(bdr + "\u2570" + "\u2500" * INNER_W + "\u256f" + RESET)
-
-    # Hint
-    buf.append(cup(bottom_tr + 1, box_left))
-    buf.append(rgb_fg(*C_HINT) + DIM + "  \u2191\u2193 Enter  Esc/click outside" + RESET)
-
-    buf.append(ESC + "[?25l")  # hide cursor
-    buf.append(RESET)
-
-    out.write("".join(buf))
-    out.flush()
-
-
-# ---------------------------------------------------------------------------
-# Input
-# ---------------------------------------------------------------------------
-
-def read_key(fd):
-    first = os.read(fd, 1)
-    if first != b"\x1b":
-        return first.decode("utf-8", errors="replace")
-
-    if not select.select([fd], [], [], 0.05)[0]:
-        return "ESC"
-
-    second = os.read(fd, 1)
-    if second == b"[":
-        seq = b""
-        while True:
-            if not select.select([fd], [], [], 0.1)[0]:
-                break
-            ch = os.read(fd, 1)
-            seq += ch
-            if 0x40 <= ch[0] <= 0x7E:
-                break
-        return "\x1b[" + seq.decode("utf-8", errors="replace")
-    elif second == b"O":
-        if select.select([fd], [], [], 0.05)[0]:
-            ch = os.read(fd, 1)
-            return "\x1bO" + ch.decode("utf-8", errors="replace")
-        return "\x1bO"
-    else:
-        return "\x1b" + second.decode("utf-8", errors="replace")
-
-
-def parse_sgr_mouse(seq):
-    if not seq.startswith("\x1b[<"):
-        return None
-    body = seq[3:]
-    if not body:
-        return None
-    pressed = body.endswith("M")
-    if not pressed and not body.endswith("m"):
-        return None
-    body = body[:-1]
-    parts = body.split(";")
-    if len(parts) != 3:
-        return None
-    try:
-        return int(parts[0]), int(parts[1]), int(parts[2]), pressed
-    except ValueError:
-        return None
-
-
-# ---------------------------------------------------------------------------
-# Navigation
-# ---------------------------------------------------------------------------
-
-def selectable_indices():
-    return [i for i, item in enumerate(MENU) if item is not None]
-
-
-def next_sel(current):
-    idxs = selectable_indices()
-    for i in idxs:
-        if i > current:
-            return i
-    return current
-
-
-def prev_sel(current):
-    idxs = selectable_indices()
-    for i in reversed(idxs):
-        if i < current:
-            return i
-    return current
-
-
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
-
-def main():
-    # Get click position from kitty's {mouse_x} {mouse_y} template vars (0-indexed cells)
-    try:
-        click_col = int(sys.argv[1]) + 1  # convert to 1-indexed
-        click_row = int(sys.argv[2]) + 1
-    except (IndexError, ValueError):
-        click_col, click_row = 2, 2
-
-    out = sys.stdout
-    fd  = sys.stdin.fileno()
-    old = termios.tcgetattr(fd)
-
-    term_rows, term_cols = get_term_size()
-    box_left, box_top = calc_box_pos(click_col, click_row, term_rows, term_cols)
-
-    item_rows   = build_item_rows(box_top)
-    num_content = 2 + len(MENU)
-    box_bottom  = box_row_at(box_top, num_content)
-
-    sel_idx = selectable_indices()[0]
-
-    try:
-        out.write(ESC + "[?1049h")                    # alt screen (saves/restores terminal)
-        out.write(ESC + "[?1000h" + ESC + "[?1006h")  # SGR mouse on
-        out.flush()
-
-        tty.setraw(fd)
-        render(sel_idx, box_left, box_top, out)
-
-        action_fn = None
-
-        while True:
-            key = read_key(fd)
-
-            # Mouse
-            if key.startswith("\x1b[<"):
-                parsed = parse_sgr_mouse(key)
-                if parsed:
-                    btn, col, row, pressed = parsed
-                    if pressed and btn == 0:
-                        in_box = (box_left <= col <= box_left + BOX_W - 1 and
-                                  box_top  <= row <= box_bottom)
-                        if in_box and row in item_rows:
-                            sel_idx = item_rows[row]
-                            render(sel_idx, box_left, box_top, out)
-                            action_fn = MENU[sel_idx][1]
-                            break
-                        elif not in_box:
-                            break
+        # Items
+        for item in MENU:
+            if item is None:
+                sep = Gtk.Box()
+                sep.add_css_class('sep')
+                vbox.append(sep)
                 continue
 
-            # Keyboard
-            if key in ("\x1b[A", "\x1bOA", "k"):
-                sel_idx = prev_sel(sel_idx)
-                render(sel_idx, box_left, box_top, out)
-            elif key in ("\x1b[B", "\x1bOB", "j"):
-                sel_idx = next_sel(sel_idx)
-                render(sel_idx, box_left, box_top, out)
-            elif key in ("\r", "\n"):
-                action_fn = MENU[sel_idx][1]
-                break
-            elif key in ("ESC", "\x1b", "q", "Q"):
-                break
+            icon_str, label_str, cb = item
+            row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+            row.add_css_class('menu-row')
 
-    finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old)
-        out.write(ESC + "[?1006l" + ESC + "[?1000l")
-        out.write(ESC + "[?25h")
-        out.write(ESC + "[?1049l")
-        out.flush()
+            icon = Gtk.Label(label=icon_str)
+            icon.add_css_class('icon-label')
+            icon.set_halign(Gtk.Align.CENTER)
+            icon.set_size_request(22, -1)
 
-    if action_fn:
-        action_fn()
+            label = Gtk.Label(label=label_str)
+            label.add_css_class('text-label')
+            label.set_halign(Gtk.Align.START)
+            label.set_hexpand(True)
+
+            row.append(icon)
+            row.append(label)
+
+            # Mouse click handler
+            gesture = Gtk.GestureClick()
+            gesture.connect('released', self._on_item_click, cb)
+            row.add_controller(gesture)
+
+            vbox.append(row)
+
+        self.set_child(vbox)
+
+        # Escape to close
+        key_ctl = Gtk.EventControllerKey()
+        key_ctl.connect('key-pressed', self._on_key)
+        self.add_controller(key_ctl)
+
+        # Close when clicking outside (focus loss)
+        self._alive = True
+        focus_ctl = Gtk.EventControllerFocus()
+        focus_ctl.connect('leave', self._on_focus_out)
+        self.add_controller(focus_ctl)
+
+        # Safety timeout — close after 15s
+        GLib.timeout_add(15000, self._timeout)
+
+    def _on_item_click(self, gesture, n_press, x, y, callback):
+        self._alive = False
+        self.close()
+        # Run callback after window closes
+        GLib.timeout_add(50, lambda: (callback(), False)[-1])
+
+    def _on_key(self, ctl, keyval, keycode, state):
+        if keyval == Gdk.KEY_Escape:
+            self._alive = False
+            self.close()
+            return True
+        return False
+
+    def _on_focus_out(self, ctl):
+        if self._alive:
+            GLib.timeout_add(150, self._maybe_close)
+
+    def _maybe_close(self):
+        if self._alive:
+            self._alive = False
+            self.close()
+        return False
+
+    def _timeout(self):
+        if self._alive:
+            self._alive = False
+            self.close()
+        return False
 
 
-if __name__ == "__main__":
-    main()
+class App(Gtk.Application):
+    def __init__(self):
+        super().__init__(application_id='dev.kitty.context.menu')
+
+    def do_activate(self):
+        # Load CSS
+        provider = Gtk.CssProvider()
+        provider.load_from_data(CSS.encode())
+        Gtk.StyleContext.add_provider_for_display(
+            Gdk.Display.get_default(), provider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+
+        win = MenuWindow(self)
+        win.present()
+
+
+if __name__ == '__main__':
+    App().run([])
