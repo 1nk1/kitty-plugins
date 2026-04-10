@@ -383,36 +383,36 @@ chmod +x "$D"/*.sh
 SESSION="/tmp/kitty_claude_board.session"
 
 cat > "$SESSION" << EOF
-new_tab 󰄛 Claude
+new_tab [󰄛 CLAUDE]
 layout grid
 launch
 launch
 launch
 launch
-new_tab  Monitor
+new_tab [ MONITOR]
 layout stack
 launch btop
-new_tab  Logs
+new_tab [ LOGS]
 layout horizontal
 launch $D/logs_full.sh
 launch $D/logs_warn.sh
-new_tab 󰛳 Network
+new_tab [󰛳 NETWORK]
 layout horizontal
 launch $D/net_conn.sh
 launch $D/net_traffic.sh
-new_tab  Security
+new_tab [ SECURITY]
 layout horizontal
 launch $D/sec_audit.sh
 launch $D/sec_fw.sh
-new_tab  Git
+new_tab [ GIT]
 layout horizontal
 launch $D/git_status.sh
 launch $D/git_log.sh
-new_tab  Docker
+new_tab [ DOCKER]
 layout horizontal
 launch $D/docker_ps.sh
 launch $D/docker_img.sh
-new_tab  Shell
+new_tab [ SHELL]
 layout vertical
 launch
 launch
