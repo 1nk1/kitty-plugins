@@ -648,37 +648,81 @@ cat > "$D/thermals.sh" << 'SCRIPT'
 #!/bin/bash
 while true; do
     clear
-    echo -e "\033[38;2;255;85;85m\033[1m  󰔏  Temperatures\033[0m"
+    echo -e "\033[38;2;255;85;85m\033[1m  󰔏  System Health\033[0m"
     echo -e "\033[38;2;98;114;164m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
     echo
 
-    echo -e "  \033[38;2;189;147;249m\033[1m  CPU\033[0m"
-    echo -e "  \033[38;2;98;114;164m  ────────────────────────\033[0m"
-    sensors -A 2>/dev/null | grep -A 3 'k10temp\|coretemp\|zenpower' | grep -E 'Tctl|Tdie|Core|Package' | while IFS= read -r line; do
+    # ── UPTIME & LOAD ──
+    echo -e "  \033[38;2;189;147;249m\033[1m  System\033[0m"
+    echo -e "  \033[38;2;98;114;164m  ────────────────────────────────────────\033[0m"
+    uptime_str=$(uptime -p 2>/dev/null | sed 's/up //')
+    load=$(cat /proc/loadavg 2>/dev/null | awk '{print $1, $2, $3}')
+    procs=$(ps -e --no-headers 2>/dev/null | wc -l)
+    echo -e "    \033[38;2;139;233;253m Uptime:\033[0m  $uptime_str"
+    echo -e "    \033[38;2;139;233;253m Load: \033[0m  $load"
+    echo -e "    \033[38;2;139;233;253m Procs:\033[0m  $procs"
+
+    # ── MEMORY ──
+    echo
+    echo -e "  \033[38;2;189;147;249m\033[1m  Memory\033[0m"
+    echo -e "  \033[38;2;98;114;164m  ────────────────────────────────────────\033[0m"
+    mem_total=$(awk '/MemTotal/ {printf "%.1f", $2/1048576}' /proc/meminfo)
+    mem_avail=$(awk '/MemAvailable/ {printf "%.1f", $2/1048576}' /proc/meminfo)
+    mem_used=$(awk '/MemTotal/ {t=$2} /MemAvailable/ {printf "%.1f", (t-$2)/1048576}' /proc/meminfo)
+    mem_pct=$(awk '/MemTotal/ {t=$2} /MemAvailable/ {printf "%.0f", (t-$2)*100/t}' /proc/meminfo)
+    swap_total=$(awk '/SwapTotal/ {printf "%.1f", $2/1048576}' /proc/meminfo)
+    swap_used=$(awk '/SwapTotal/ {t=$2} /SwapFree/ {printf "%.1f", (t-$2)/1048576}' /proc/meminfo)
+
+    mc="\033[38;2;80;250;123m"
+    [ "$mem_pct" -gt 60 ] && mc="\033[38;2;241;250;140m"
+    [ "$mem_pct" -gt 80 ] && mc="\033[38;2;255;85;85m"
+
+    bw=20; filled=$((mem_pct*bw/100)); empty=$((bw-filled))
+    bar=""; for ((i=0;i<filled;i++)); do bar+="█"; done; for ((i=0;i<empty;i++)); do bar+="░"; done
+
+    echo -e "    ${mc} RAM:  ${mem_used}G / ${mem_total}G  [${bar}] ${mem_pct}%\033[0m"
+    echo -e "    \033[38;2;139;233;253m Swap: ${swap_used}G / ${swap_total}G\033[0m"
+
+    # ── CPU TEMPS ──
+    echo
+    echo -e "  \033[38;2;189;147;249m\033[1m  CPU Temps\033[0m"
+    echo -e "  \033[38;2;98;114;164m  ────────────────────────────────────────\033[0m"
+    sensors -A 2>/dev/null | grep -A 5 'coretemp\|k10temp\|zenpower' | grep -E 'Package|Core|Tctl|Tdie' | while IFS= read -r line; do
         temp=$(echo "$line" | grep -oP '\+\K[0-9]+' | head -1)
+        label=$(echo "$line" | cut -d: -f1 | xargs)
         tc="\033[38;2;80;250;123m"
         [ -n "$temp" ] && [ "$temp" -gt 65 ] && tc="\033[38;2;241;250;140m"
         [ -n "$temp" ] && [ "$temp" -gt 80 ] && tc="\033[38;2;255;85;85m"
-        echo -e "    ${tc}${line}\033[0m"
+        printf "    ${tc}%-20s %s°C\033[0m\n" "$label" "$temp"
     done
 
+    # ── GPU ──
     echo
     echo -e "  \033[38;2;189;147;249m\033[1m 󰢮 GPU\033[0m"
-    echo -e "  \033[38;2;98;114;164m  ────────────────────────\033[0m"
+    echo -e "  \033[38;2;98;114;164m  ────────────────────────────────────────\033[0m"
     for f in /sys/class/drm/card*/device/hwmon/hwmon*/temp*_input; do
         [ -f "$f" ] || continue
-        label_f="${f%_input}_label"
-        label=$(cat "$label_f" 2>/dev/null || echo "Sensor")
+        label=$(cat "${f%_input}_label" 2>/dev/null || echo "Sensor")
         temp=$(($(cat "$f" 2>/dev/null || echo 0)/1000))
         tc="\033[38;2;80;250;123m"
         [ "$temp" -gt 70 ] && tc="\033[38;2;241;250;140m"
         [ "$temp" -gt 85 ] && tc="\033[38;2;255;85;85m"
         printf "    ${tc}%-15s %d°C\033[0m\n" "$label" "$temp"
     done
+    # GPU power + busy
+    busy=$(cat /sys/class/drm/card*/device/gpu_busy_percent 2>/dev/null | head -1)
+    power=$(cat /sys/class/drm/card*/device/hwmon/hwmon*/power1_average 2>/dev/null | head -1)
+    [ -n "$power" ] && power=$((power/1000000)) || power="?"
+    vram_used=$(cat /sys/class/drm/card*/device/mem_info_vram_used 2>/dev/null | head -1)
+    vram_total=$(cat /sys/class/drm/card*/device/mem_info_vram_total 2>/dev/null | head -1)
+    [ -n "$vram_used" ] && vram_mb=$((vram_used/1048576)) || vram_mb="?"
+    [ -n "$vram_total" ] && vram_total_mb=$((vram_total/1048576)) || vram_total_mb="?"
+    echo -e "    \033[38;2;255;184;108m Power:  ${power}W\033[0m   \033[38;2;139;233;253m Load: ${busy:-?}%\033[0m   \033[38;2;241;250;140m VRAM: ${vram_mb}/${vram_total_mb} MB\033[0m"
 
+    # ── NVMe ──
     echo
     echo -e "  \033[38;2;189;147;249m\033[1m 󰋊 NVMe\033[0m"
-    echo -e "  \033[38;2;98;114;164m  ────────────────────────\033[0m"
+    echo -e "  \033[38;2;98;114;164m  ────────────────────────────────────────\033[0m"
     for dev in /sys/class/nvme/nvme*; do
         [ -d "$dev" ] || continue
         name=$(basename "$dev")
@@ -692,19 +736,23 @@ while true; do
         printf "    ${tc}%-8s %d°C\033[0m  \033[38;2;98;114;164m%s\033[0m\n" "$name" "$temp" "$model"
     done
 
+    # ── FANS ──
     echo
-    echo -e "  \033[38;2;189;147;249m\033[1m  Fan\033[0m"
-    echo -e "  \033[38;2;98;114;164m  ────────────────────────\033[0m"
-    for f in /sys/class/drm/card*/device/hwmon/hwmon*/fan*_input; do
+    echo -e "  \033[38;2;189;147;249m\033[1m  Fans\033[0m"
+    echo -e "  \033[38;2;98;114;164m  ────────────────────────────────────────\033[0m"
+    found_fan=0
+    for f in /sys/class/drm/card*/device/hwmon/hwmon*/fan*_input /sys/class/hwmon/hwmon*/fan*_input; do
         [ -f "$f" ] || continue
         rpm=$(cat "$f" 2>/dev/null || echo 0)
-        label_f="${f%_input}_label"
-        label=$(cat "$label_f" 2>/dev/null || echo "Fan")
+        [ "$rpm" = "0" ] && continue
+        label=$(cat "${f%_input}_label" 2>/dev/null || echo "Fan")
         fc="\033[38;2;80;250;123m"
         [ "$rpm" -gt 1500 ] && fc="\033[38;2;241;250;140m"
         [ "$rpm" -gt 2500 ] && fc="\033[38;2;255;85;85m"
-        printf "    ${fc}%-8s %d RPM\033[0m\n" "$label" "$rpm"
+        printf "    ${fc}%-12s %d RPM\033[0m\n" "$label" "$rpm"
+        found_fan=1
     done
+    [ "$found_fan" = "0" ] && echo -e "    \033[38;2;98;114;164mNo fan sensors detected\033[0m"
 
     sleep 2
 done
