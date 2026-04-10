@@ -741,9 +741,17 @@ while true; do
 
     echo
     gov=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null)
-    boost=$(cat /sys/devices/system/cpu/cpufreq/boost 2>/dev/null)
+    # Check boost: intel_pstate uses no_turbo (0=on), amd uses cpufreq/boost (1=on)
+    if [ -f /sys/devices/system/cpu/intel_pstate/no_turbo ]; then
+        no_turbo=$(cat /sys/devices/system/cpu/intel_pstate/no_turbo)
+        [ "$no_turbo" = "0" ] && boost_on=1 || boost_on=0
+    elif [ -f /sys/devices/system/cpu/cpufreq/boost ]; then
+        boost_on=$(cat /sys/devices/system/cpu/cpufreq/boost)
+    else
+        boost_on="?"
+    fi
     echo -e "  \033[38;2;189;147;249mGovernor:\033[0m \033[38;2;248;248;242m${gov:-?}\033[0m"
-    if [ "$boost" = "1" ]; then
+    if [ "$boost_on" = "1" ]; then
         echo -e "  \033[38;2;189;147;249mBoost:\033[0m    \033[38;2;80;250;123mEnabled\033[0m"
     else
         echo -e "  \033[38;2;189;147;249mBoost:\033[0m    \033[38;2;255;85;85mDisabled\033[0m"
