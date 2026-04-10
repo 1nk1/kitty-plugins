@@ -516,8 +516,11 @@ while true; do
     printf "  \033[38;2;189;147;249m\033[1m%-20s %6s %6s %6s %5s\033[0m\n" "Mount" "Size" "Used" "Avail" "Use%"
     echo -e "  \033[38;2;98;114;164m────────────────────────────────────────────────────────\033[0m"
 
-    df -h --output=target,size,used,avail,pcent -x tmpfs -x devtmpfs -x efivarfs 2>/dev/null | tail -n +2 | sort | while IFS= read -r line; do
+    df -h --output=target,size,used,avail,pcent -x tmpfs -x devtmpfs -x efivarfs -x squashfs 2>/dev/null | tail -n +2 | grep -v '/snap' | sort | while IFS= read -r line; do
         mount=$(echo "$line" | awk '{print $1}')
+        # Skip loop, snap, and other noise mounts
+        [[ "$mount" == /var/lib/snapd/* ]] && continue
+        [[ "$mount" == /snap/* ]] && continue
         size=$(echo "$line" | awk '{print $2}')
         used=$(echo "$line" | awk '{print $3}')
         avail=$(echo "$line" | awk '{print $4}')
@@ -536,12 +539,20 @@ while true; do
     done
 
     echo
-    echo -e "  \033[38;2;139;233;253m\033[1m  Drive Health\033[0m"
+    echo -e "  \033[38;2;139;233;253m\033[1m  Drives\033[0m"
     echo -e "  \033[38;2;98;114;164m  ────────────────────────\033[0m"
-    lsblk -d -o NAME,SIZE,MODEL,ROTA 2>/dev/null | tail -n +2 | while read name size model rota; do
-        type_icon=""
-        [ "$rota" = "0" ] && type_icon="󰋊 SSD" || type_icon=" HDD"
-        printf "    \033[38;2;139;233;253m%-6s\033[0m \033[38;2;248;248;242m%-8s\033[0m \033[38;2;241;250;140m%-6s\033[0m \033[38;2;98;114;164m%s\033[0m\n" "$name" "$size" "$type_icon" "$model"
+    lsblk -d -o NAME,SIZE,MODEL,ROTA,TRAN 2>/dev/null | tail -n +2 | while read name size model rota tran; do
+        # Skip loop, zram, ram devices
+        [[ "$name" == loop* || "$name" == zram* || "$name" == ram* ]] && continue
+        # Detect type by transport, not ROTA (ROTA is wrong for NVMe)
+        if [[ "$tran" == "nvme" ]]; then
+            type_icon="\033[38;2;80;250;123m󰋊 NVMe"
+        elif [[ "$rota" == "0" ]]; then
+            type_icon="\033[38;2;139;233;253m󰋊 SSD "
+        else
+            type_icon="\033[38;2;255;184;108m HDD "
+        fi
+        printf "    \033[38;2;248;248;242m%-8s\033[0m \033[38;2;248;248;242m%-8s\033[0m ${type_icon}\033[0m  \033[38;2;98;114;164m%s\033[0m\n" "$name" "$size" "$model"
     done
 
     echo
@@ -568,8 +579,8 @@ while true; do
     idx=0
     for dev in /sys/block/*/stat; do
         name=$(basename $(dirname "$dev"))
-        # Skip loop, ram, dm devices
-        [[ "$name" == loop* || "$name" == ram* || "$name" == dm-* ]] && continue
+        # Skip loop, ram, dm, zram devices
+        [[ "$name" == loop* || "$name" == ram* || "$name" == dm-* || "$name" == zram* ]] && continue
 
         read r_io _ r_sec _ w_io _ w_sec _ _ _ _ _ _ _ _ < "$dev" 2>/dev/null || continue
 
