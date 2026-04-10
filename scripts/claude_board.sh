@@ -892,6 +892,9 @@ printf '%s\n' \
   "launch" \
   "cd ${PROJ_DIRS[3]}" \
   "launch" \
+  "new_tab [$(printf '\U000F0AB1') QA]" \
+  "layout stack" \
+  "launch /home/adj/.local/bin/qantum-tui" \
   "new_tab [$(printf '\U000F0E7E') SYS]" \
   "layout stack" \
   "launch btop" \
