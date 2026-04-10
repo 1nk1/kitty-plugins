@@ -224,19 +224,68 @@ class MenuWindow(Gtk.ApplicationWindow):
         GLib.timeout_add(15000, self._timeout)
 
     def _move_to_cursor(self, widget):
-        """Move window to mouse cursor position using xdotool."""
+        """Move window to mouse cursor position via KWin scripting."""
         def _do_move():
+            x, y = _MOUSE_X, _MOUSE_Y
+            script = (
+                'var clients = workspace.windowList();'
+                'for (var i = 0; i < clients.length; i++) {'
+                '  var c = clients[i];'
+                f'  if (c.caption.indexOf("kitty_context_menu") >= 0) {{'
+                f'    c.frameGeometry = {{x:{x},y:{y},'
+                '      width:c.frameGeometry.width,'
+                '      height:c.frameGeometry.height};'
+                '    break;'
+                '  }'
+                '}'
+            )
             try:
-                # Find our window by title and move it
+                import tempfile
+                tmp = tempfile.NamedTemporaryFile(
+                    mode='w', suffix='.js', delete=False)
+                tmp.write(script)
+                tmp.close()
+
+                # Unload any previous script with same name
                 subprocess.run(
-                    ['xdotool', 'search', '--name', 'kitty_context_menu',
-                     'windowmove', '--', str(_MOUSE_X), str(_MOUSE_Y)],
+                    ['gdbus', 'call', '--session',
+                     '--dest', 'org.kde.KWin',
+                     '--object-path', '/Scripting',
+                     '--method', 'org.kde.kwin.Scripting.unloadScript',
+                     'kitty_ctx_mv'],
                     capture_output=True, timeout=2)
+
+                # Load script
+                subprocess.run(
+                    ['gdbus', 'call', '--session',
+                     '--dest', 'org.kde.KWin',
+                     '--object-path', '/Scripting',
+                     '--method', 'org.kde.kwin.Scripting.loadScript',
+                     tmp.name, 'kitty_ctx_mv'],
+                    capture_output=True, timeout=2)
+
+                # Start all loaded scripts
+                subprocess.run(
+                    ['gdbus', 'call', '--session',
+                     '--dest', 'org.kde.KWin',
+                     '--object-path', '/Scripting',
+                     '--method', 'org.kde.kwin.Scripting.start'],
+                    capture_output=True, timeout=2)
+
+                # Cleanup
+                subprocess.run(
+                    ['gdbus', 'call', '--session',
+                     '--dest', 'org.kde.KWin',
+                     '--object-path', '/Scripting',
+                     '--method', 'org.kde.kwin.Scripting.unloadScript',
+                     'kitty_ctx_mv'],
+                    capture_output=True, timeout=2)
+
+                os.unlink(tmp.name)
             except Exception:
                 pass
             return False
-        # Small delay to let the window appear
-        GLib.timeout_add(50, _do_move)
+        GLib.timeout_add(150, _do_move)
 
     def _on_item_click(self, gesture, n_press, x, y, callback):
         self._alive = False
