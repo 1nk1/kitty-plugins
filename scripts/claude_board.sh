@@ -121,7 +121,6 @@ launch
 launch
 launch
 launch
-focus_tab
 new_tab  Monitor
 layout stack
 launch btop
