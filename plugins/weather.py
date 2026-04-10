@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
 """
 weather.py — ambient particle overlay (snow / rain)
 GTK4 + Cairo, fully input-transparent, Dracula Pro palette.

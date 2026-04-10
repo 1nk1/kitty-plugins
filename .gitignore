@@ -5,3 +5,4 @@ last_session.conf
 /tmp/
 *.log
 .backup-*
+memory

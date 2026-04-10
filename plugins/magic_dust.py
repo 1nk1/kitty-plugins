@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
 """
 ✨ Magic Dust — Kitty terminal particle effects
 GTK4 + Cairo transparent overlay. Press Ctrl+F9 to cycle modes.

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
 """
 Compact right-click context menu for Kitty.
 Runs as --type=overlay kitten.

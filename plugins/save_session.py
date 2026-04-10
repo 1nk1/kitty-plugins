@@ -1,9 +1,10 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
 """
 Save the current Kitty session to ~/.config/kitty/last_session.conf
 so it can be restored on next launch via startup_session.
 
-Captures: tab titles, working directories, tab order, active tab.
+Captures: tab titles, working directories, tab order, active tab,
+layout per tab, multiple windows (splits) per tab.
 """
 
 import json
@@ -13,7 +14,7 @@ import sys
 import datetime
 
 SESSION_FILE = os.path.expanduser("~/.config/kitty/last_session.conf")
-LOG_FILE     = "/tmp/kitty_session_save.log"
+LOG_FILE = "/tmp/kitty_session_save.log"
 
 
 def log(msg):
@@ -23,32 +24,27 @@ def log(msg):
 
 
 def find_kitty_socket():
-    """
-    Discover the kitty remote-control socket.  Tries, in order:
-    1. KITTY_LISTEN_ON env var (set when we're already inside kitty)
-    2. Child-process environ scan (KITTY_LISTEN_ON in shell children)
-    3. /proc/net/unix scan for abstract sockets named @kitty-<PID>
-    """
-    # 1. Already inside kitty
     if "KITTY_LISTEN_ON" in os.environ:
         return os.environ["KITTY_LISTEN_ON"]
 
-    # 2. Scan child processes of each kitty PID
-    pids = subprocess.run(["pgrep", "-x", "kitty"],
-                          capture_output=True, text=True).stdout.strip().splitlines()
-    for pid in pids:
-        try:
-            with open(f"/proc/{pid}/environ", "rb") as f:
-                env_data = f.read().decode("utf-8", errors="replace")
-            for item in env_data.split("\x00"):
-                if item.startswith("KITTY_LISTEN_ON="):
-                    return item.split("=", 1)[1]
-        except (PermissionError, FileNotFoundError, ValueError):
-            pass
+    pids = subprocess.run(
+        ["pgrep", "-x", "kitty"], capture_output=True, text=True
+    ).stdout.strip().splitlines()
 
-        # Also check children of this kitty PID
-        children = subprocess.run(["pgrep", "-P", pid],
-                                  capture_output=True, text=True).stdout.strip().splitlines()
+    for pid in pids:
+        for check_pid in [pid]:
+            try:
+                with open(f"/proc/{check_pid}/environ", "rb") as f:
+                    env_data = f.read().decode("utf-8", errors="replace")
+                for item in env_data.split("\x00"):
+                    if item.startswith("KITTY_LISTEN_ON="):
+                        return item.split("=", 1)[1]
+            except (PermissionError, FileNotFoundError):
+                pass
+
+        children = subprocess.run(
+            ["pgrep", "-P", pid], capture_output=True, text=True
+        ).stdout.strip().splitlines()
         for cpid in children:
             try:
                 with open(f"/proc/{cpid}/environ", "rb") as f:
@@ -56,10 +52,9 @@ def find_kitty_socket():
                 for item in env_data.split("\x00"):
                     if item.startswith("KITTY_LISTEN_ON="):
                         return item.split("=", 1)[1]
-            except (PermissionError, FileNotFoundError, ValueError):
+            except (PermissionError, FileNotFoundError):
                 pass
 
-    # 3. Parse /proc/net/unix for abstract sockets named @kitty-<digits>
     try:
         with open("/proc/net/unix") as f:
             for line in f:
@@ -77,8 +72,8 @@ def find_kitty_socket():
 def main():
     socket = find_kitty_socket()
     if not socket:
-        log("No running kitty instance found (KITTY_LISTEN_ON not set).")
-        sys.exit(0)   # exit 0 so the timer doesn't spam failures when kitty is closed
+        log("No running kitty instance found.")
+        sys.exit(0)
 
     cmd = ["kitty", "@", f"--to={socket}", "ls"]
     try:
@@ -101,7 +96,6 @@ def main():
         log("No OS windows found.")
         sys.exit(0)
 
-    # Use the focused OS window; fall back to the first one
     focused_win = next((w for w in data if w.get("is_focused")), data[0])
     tabs = focused_win.get("tabs", [])
 
@@ -114,27 +108,34 @@ def main():
     for tab in tabs:
         title = (tab.get("title") or "shell").strip()
         is_active = tab.get("is_active", False)
+        layout = tab.get("layout", "stack")
+        layout_name = layout.split(":")[0] if ":" in layout else layout
 
-        # Find the cwd from the focused/active window inside this tab
         windows = tab.get("windows", [])
-        cwd = os.path.expanduser("~")
-        for win in windows:
-            w_cwd = win.get("cwd", "")
-            if w_cwd and os.path.isdir(w_cwd):
-                cwd = w_cwd
-                if win.get("is_focused"):
-                    break  # prefer focused window's cwd
 
         lines.append(f"new_tab {title}")
-        lines.append("layout stack")
-        lines.append(f"cd {cwd}")
-        lines.append("launch")          # required: opens the shell in cwd
+        lines.append(f"layout {layout_name}")
+
+        if not windows:
+            lines.append(f"cd {os.path.expanduser('~')}")
+            lines.append("launch")
+        else:
+            for win in windows:
+                cwd = win.get("cwd", "")
+                if not cwd or not os.path.isdir(cwd):
+                    cwd = os.path.expanduser("~")
+                lines.append(f"cd {cwd}")
+                lines.append("launch")
+
         if is_active:
-            lines.append("focus_tab")   # mark this tab as the active one
+            lines.append("focus_tab")
 
     content = "\n".join(lines) + "\n"
-    with open(SESSION_FILE, "w") as f:
+
+    tmp = SESSION_FILE + ".tmp"
+    with open(tmp, "w") as f:
         f.write(content)
+    os.rename(tmp, SESSION_FILE)
 
     tab_count = sum(1 for l in lines if l.startswith("new_tab"))
     log(f"Saved {tab_count} tabs → {SESSION_FILE}")
