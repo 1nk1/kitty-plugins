@@ -863,14 +863,34 @@ chmod +x "$D"/*.sh
 # ═══════════════════════════════════════════════════════════════
 SESSION="/tmp/kitty_claude_board.session"
 
-# Use printf with \U escape to guarantee Nerd Font icons survive encoding
-# Icons: 󰄛=U+F011B =U+F085 =U+F0F6 󰛳=U+F06F3 =U+F132 =U+E725 =U+F308 󰢮=U+F08AE 󰋊=U+F02CA 󰔏=U+F050F 󰏔=U+F03D4 =U+F120
+# Get 4 most recently used project dirs for the AI tab
+# Reads from the main kitty session file (saved every 30s) or falls back to recent dirs
+PROJ_DIRS=()
+if [ -f ~/.config/kitty/last_session.conf ]; then
+    while IFS= read -r line; do
+        [[ "$line" == cd\ * ]] && dir="${line#cd }" && [ -d "$dir" ] && PROJ_DIRS+=("$dir")
+    done < ~/.config/kitty/last_session.conf
+fi
+# Pad with recent project dirs if we don't have enough
+for d in $(stat --format '%Y %n' ~/projects/*/ 2>/dev/null | sort -rn | awk '{print $2}'); do
+    [ ${#PROJ_DIRS[@]} -ge 4 ] && break
+    # Skip if already in list
+    skip=0; for p in "${PROJ_DIRS[@]}"; do [ "$p" = "$d" ] && skip=1; done
+    [ "$skip" -eq 0 ] && [ -d "$d" ] && PROJ_DIRS+=("$d")
+done
+# Ensure we have at least 4
+while [ ${#PROJ_DIRS[@]} -lt 4 ]; do PROJ_DIRS+=("$HOME"); done
+
 printf '%s\n' \
   "new_tab [$(printf '\U000F011B') AI]" \
   "layout grid" \
+  "cd ${PROJ_DIRS[0]}" \
   "launch" \
+  "cd ${PROJ_DIRS[1]}" \
   "launch" \
+  "cd ${PROJ_DIRS[2]}" \
   "launch" \
+  "cd ${PROJ_DIRS[3]}" \
   "launch" \
   "new_tab [$(printf '\U000F0E7E') SYS]" \
   "layout stack" \
