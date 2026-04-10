@@ -3,9 +3,31 @@
 Kitty right-click context menu — native GTK4 popup at mouse cursor.
 Works on KDE Wayland. Appears as a floating window at cursor position.
 Click item to execute, click outside or Escape to dismiss.
+Single instance — kills previous menu before opening new one.
 """
 
 import subprocess
+import os
+import signal
+
+# ── Single instance: kill previous menu ──────────────────────
+_PIDFILE = '/tmp/kitty_context_menu.pid'
+
+def _kill_previous():
+    try:
+        with open(_PIDFILE) as f:
+            old_pid = int(f.read().strip())
+        os.kill(old_pid, signal.SIGTERM)
+    except (FileNotFoundError, ValueError, ProcessLookupError, PermissionError):
+        pass
+
+def _write_pid():
+    with open(_PIDFILE, 'w') as f:
+        f.write(str(os.getpid()))
+
+_kill_previous()
+_write_pid()
+
 import gi
 gi.require_version('Gtk', '4.0')
 gi.require_version('Gdk', '4.0')
@@ -23,11 +45,11 @@ window.context-menu {
 window.context-menu .title-label {
     color: #FFB86C;
     font-weight: bold;
-    font-size: 11px;
-    padding: 4px 14px 2px 14px;
+    font-size: 13px;
+    padding: 6px 16px 4px 16px;
 }
 window.context-menu .menu-row {
-    padding: 5px 14px;
+    padding: 6px 16px;
     border-radius: 6px;
     margin: 1px 6px;
     transition: background-color 100ms;
@@ -37,15 +59,15 @@ window.context-menu .menu-row:hover {
 }
 window.context-menu .menu-row .icon-label {
     color: #BD93F9;
-    font-size: 14px;
-    min-width: 22px;
+    font-size: 18px;
+    min-width: 28px;
 }
 window.context-menu .menu-row:hover .icon-label {
     color: #FF79C6;
 }
 window.context-menu .menu-row .text-label {
     color: #F8F8F2;
-    font-size: 13px;
+    font-size: 14px;
 }
 window.context-menu .menu-row:hover .text-label {
     color: #BD93F9;
@@ -126,7 +148,7 @@ class MenuWindow(Gtk.ApplicationWindow):
         self.add_css_class('context-menu')
         self.set_decorated(False)
         self.set_resizable(False)
-        self.set_default_size(220, -1)
+        self.set_default_size(260, -1)
 
         vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
 
