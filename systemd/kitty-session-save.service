@@ -1,0 +1,6 @@
+[Unit]
+Description=Save Kitty terminal session
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /home/adj/.config/kitty/save_session.py

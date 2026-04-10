@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+*.pyo
+last_session.conf
+/tmp/
+*.log
+.backup-*

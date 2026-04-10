@@ -1,0 +1,11 @@
+[Unit]
+Description=Save Kitty session before logout/reboot
+DefaultDependencies=false
+Before=logout.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /home/adj/.config/kitty/save_session.py
+
+[Install]
+WantedBy=default.target
