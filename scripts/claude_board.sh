@@ -855,52 +855,52 @@ SESSION="/tmp/kitty_claude_board.session"
 # Use printf with \U escape to guarantee Nerd Font icons survive encoding
 # Icons: 󰄛=U+F011B =U+F085 =U+F0F6 󰛳=U+F06F3 =U+F132 =U+E725 =U+F308 󰢮=U+F08AE 󰋊=U+F02CA 󰔏=U+F050F 󰏔=U+F03D4 =U+F120
 printf '%s\n' \
-  "new_tab [$(printf '\U000F011B') CLAUDE]" \
+  "new_tab [$(printf '\U000F011B')AI]" \
   "layout grid" \
   "launch" \
   "launch" \
   "launch" \
   "launch" \
-  "new_tab [$(printf '\U000F0085') MONITOR]" \
+  "new_tab [$(printf '\U000F0085')SYS]" \
   "layout stack" \
   "launch btop" \
-  "new_tab [$(printf '\U000F00F6') LOGS]" \
+  "new_tab [$(printf '\U000F00F6')LOG]" \
   "layout horizontal" \
   "launch $D/logs_full.sh" \
   "launch $D/logs_warn.sh" \
-  "new_tab [$(printf '\U000F06F3') NETWORK]" \
+  "new_tab [$(printf '\U000F06F3')NET]" \
   "layout horizontal" \
   "launch $D/net_conn.sh" \
   "launch $D/net_traffic.sh" \
-  "new_tab [$(printf '\U000F0132') SECURITY]" \
+  "new_tab [$(printf '\U000F0132')SEC]" \
   "layout horizontal" \
   "launch $D/sec_audit.sh" \
   "launch $D/sec_fw.sh" \
-  "new_tab [$(printf '\U000E0725') GIT]" \
+  "new_tab [$(printf '\U000E0725')GIT]" \
   "layout horizontal" \
   "launch $D/git_status.sh" \
   "launch $D/git_log.sh" \
-  "new_tab [$(printf '\U000F0308') DOCKER]" \
+  "new_tab [$(printf '\U000F0308')DOC]" \
   "layout horizontal" \
   "launch $D/docker_ps.sh" \
   "launch $D/docker_img.sh" \
-  "new_tab [$(printf '\U000F08AE') GPU]" \
+  "new_tab [$(printf '\U000F08AE')GPU]" \
   "layout horizontal" \
   "launch $D/gpu_stats.sh" \
   "launch $D/gpu_vram.sh" \
-  "new_tab [$(printf '\U000F02CA') DISK]" \
+  "new_tab [$(printf '\U000F02CA')DSK]" \
   "layout horizontal" \
   "launch $D/disk_space.sh" \
   "launch $D/disk_io.sh" \
-  "new_tab [$(printf '\U000F050F') THERMALS]" \
+  "new_tab [$(printf '\U000F050F')TMP]" \
   "layout horizontal" \
   "launch $D/thermals.sh" \
   "launch $D/cpu_freq.sh" \
-  "new_tab [$(printf '\U000F03D4') UPDATES]" \
+  "new_tab [$(printf '\U000F03D4')UPD]" \
   "layout horizontal" \
   "launch $D/updates.sh" \
   "launch $D/pacman_log.sh" \
-  "new_tab [$(printf '\U000F0120') SHELL]" \
+  "new_tab [$(printf '\U000F0120')SH]" \
   "layout vertical" \
   "launch" \
   "launch" \
