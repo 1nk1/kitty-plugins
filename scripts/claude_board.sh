@@ -375,6 +375,417 @@ while true; do
 done
 SCRIPT
 
+# ═══════════════════════════════════════════════════════════════
+#  GPU
+# ═══════════════════════════════════════════════════════════════
+cat > "$D/gpu_stats.sh" << 'SCRIPT'
+#!/bin/bash
+while true; do
+    clear
+    echo -e "\033[38;2;189;147;249m\033[1m  󰢮  AMD GPU — RX 7900 XT\033[0m"
+    echo -e "\033[38;2;98;114;164m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+    echo
+
+    if command -v rocm-smi &>/dev/null; then
+        # Temperature
+        edge=$(cat /sys/class/drm/card*/device/hwmon/hwmon*/temp1_input 2>/dev/null | head -1)
+        junc=$(cat /sys/class/drm/card*/device/hwmon/hwmon*/temp2_input 2>/dev/null | head -1)
+        mem_t=$(cat /sys/class/drm/card*/device/hwmon/hwmon*/temp3_input 2>/dev/null | head -1)
+
+        [ -n "$edge" ] && edge=$((edge/1000)) || edge="?"
+        [ -n "$junc" ] && junc=$((junc/1000)) || junc="?"
+        [ -n "$mem_t" ] && mem_t=$((mem_t/1000)) || mem_t="?"
+
+        tc="\033[38;2;80;250;123m"
+        [ "$edge" != "?" ] && [ "$edge" -gt 70 ] && tc="\033[38;2;241;250;140m"
+        [ "$edge" != "?" ] && [ "$edge" -gt 85 ] && tc="\033[38;2;255;85;85m"
+
+        echo -e "  \033[38;2;241;250;140m\033[1m  Temperatures\033[0m"
+        echo -e "    ${tc}Edge:     ${edge}°C\033[0m"
+        echo -e "    ${tc}Junction: ${junc}°C\033[0m"
+        echo -e "    ${tc}Memory:   ${mem_t}°C\033[0m"
+
+        echo
+        echo -e "  \033[38;2;139;233;253m\033[1m  Performance\033[0m"
+
+        # GPU busy
+        busy=$(cat /sys/class/drm/card*/device/gpu_busy_percent 2>/dev/null | head -1)
+        [ -z "$busy" ] && busy="?"
+        bc="\033[38;2;80;250;123m"
+        [ "$busy" != "?" ] && [ "$busy" -gt 50 ] && bc="\033[38;2;241;250;140m"
+        [ "$busy" != "?" ] && [ "$busy" -gt 80 ] && bc="\033[38;2;255;85;85m"
+        echo -e "    ${bc}GPU Load:  ${busy}%\033[0m"
+
+        # Clocks
+        sclk=$(cat /sys/class/drm/card*/device/pp_dpm_sclk 2>/dev/null | grep '\*' | awk '{print $2}')
+        mclk=$(cat /sys/class/drm/card*/device/pp_dpm_mclk 2>/dev/null | grep '\*' | awk '{print $2}')
+        echo -e "    \033[38;2;248;248;242mGPU Clock: ${sclk:-?}\033[0m"
+        echo -e "    \033[38;2;248;248;242mMem Clock: ${mclk:-?}\033[0m"
+
+        # Power
+        power=$(cat /sys/class/drm/card*/device/hwmon/hwmon*/power1_average 2>/dev/null | head -1)
+        [ -n "$power" ] && power=$((power/1000000)) || power="?"
+        echo -e "    \033[38;2;255;184;108m Power:    ${power}W\033[0m"
+
+        # Fan
+        fan=$(cat /sys/class/drm/card*/device/hwmon/hwmon*/fan1_input 2>/dev/null | head -1)
+        echo -e "    \033[38;2;139;233;253m Fan:      ${fan:-0} RPM\033[0m"
+    else
+        echo -e "  \033[38;2;98;114;164mrocm-smi not installed\033[0m"
+        echo -e "  \033[38;2;241;250;140mInstall: sudo pacman -S rocm-smi-lib\033[0m"
+    fi
+
+    sleep 1
+done
+SCRIPT
+
+cat > "$D/gpu_vram.sh" << 'SCRIPT'
+#!/bin/bash
+while true; do
+    clear
+    echo -e "\033[38;2;255;184;108m\033[1m   VRAM Usage\033[0m"
+    echo -e "\033[38;2;98;114;164m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+    echo
+
+    used=$(cat /sys/class/drm/card*/device/mem_info_vram_used 2>/dev/null | head -1)
+    total=$(cat /sys/class/drm/card*/device/mem_info_vram_total 2>/dev/null | head -1)
+
+    if [ -n "$used" ] && [ -n "$total" ]; then
+        used_mb=$((used/1048576))
+        total_mb=$((total/1048576))
+        pct=$((used*100/total))
+
+        vc="\033[38;2;80;250;123m"
+        [ "$pct" -gt 50 ] && vc="\033[38;2;241;250;140m"
+        [ "$pct" -gt 80 ] && vc="\033[38;2;255;85;85m"
+
+        echo -e "  ${vc}\033[1m  ${used_mb} MB / ${total_mb} MB  (${pct}%)\033[0m"
+        echo
+
+        # Bar graph
+        bar_width=40
+        filled=$((pct*bar_width/100))
+        empty=$((bar_width-filled))
+        bar=""
+        for ((i=0; i<filled; i++)); do bar+="█"; done
+        for ((i=0; i<empty; i++)); do bar+="░"; done
+        echo -e "  ${vc}  [${bar}]\033[0m"
+    else
+        echo -e "  \033[38;2;98;114;164mVRAM info not available\033[0m"
+    fi
+
+    echo
+    echo -e "  \033[38;2;189;147;249m\033[1m  GPU Processes\033[0m"
+    echo -e "  \033[38;2;98;114;164m  ────────────────────────\033[0m"
+
+    if command -v rocm-smi &>/dev/null; then
+        rocm-smi --showpids 2>/dev/null | grep -v '=' | grep -v '^$' | while IFS= read -r line; do
+            echo -e "    \033[38;2;248;248;242m$line\033[0m"
+        done
+    fi
+
+    # Also show processes using the GPU via /proc
+    ls /proc/*/fdinfo/* 2>/dev/null | head -1 >/dev/null 2>&1
+    echo
+    echo -e "  \033[38;2;139;233;253m\033[1m  DRM Clients\033[0m"
+    echo -e "  \033[38;2;98;114;164m  ────────────────────────\033[0m"
+    for pid_dir in /proc/[0-9]*/fdinfo; do
+        pid=${pid_dir#/proc/}; pid=${pid%/fdinfo}
+        if grep -q 'drm-memory-vram' "$pid_dir"/* 2>/dev/null; then
+            cmd=$(cat /proc/$pid/comm 2>/dev/null)
+            vram=$(grep 'drm-memory-vram' "$pid_dir"/* 2>/dev/null | awk '{sum+=$2} END {printf "%.0f", sum/1024}')
+            [ -n "$cmd" ] && printf "    \033[38;2;80;250;123m%-20s\033[0m \033[38;2;255;184;108m%s MB\033[0m\n" "$cmd" "$vram"
+        fi
+    done 2>/dev/null | sort -t$'\t' -k2 -rn | head -10
+
+    sleep 2
+done
+SCRIPT
+
+# ═══════════════════════════════════════════════════════════════
+#  DISK
+# ═══════════════════════════════════════════════════════════════
+cat > "$D/disk_space.sh" << 'SCRIPT'
+#!/bin/bash
+while true; do
+    clear
+    echo -e "\033[38;2;189;147;249m\033[1m  󰋊  Filesystem Space\033[0m"
+    echo -e "\033[38;2;98;114;164m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+    echo
+
+    printf "  \033[38;2;189;147;249m\033[1m%-20s %6s %6s %6s %5s\033[0m\n" "Mount" "Size" "Used" "Avail" "Use%"
+    echo -e "  \033[38;2;98;114;164m────────────────────────────────────────────────────────\033[0m"
+
+    df -h --output=target,size,used,avail,pcent -x tmpfs -x devtmpfs -x efivarfs 2>/dev/null | tail -n +2 | sort | while IFS= read -r line; do
+        mount=$(echo "$line" | awk '{print $1}')
+        size=$(echo "$line" | awk '{print $2}')
+        used=$(echo "$line" | awk '{print $3}')
+        avail=$(echo "$line" | awk '{print $4}')
+        pct=$(echo "$line" | awk '{print $5}' | tr -d '%')
+
+        color="\033[38;2;80;250;123m"
+        [ "$pct" -gt 60 ] && color="\033[38;2;241;250;140m"
+        [ "$pct" -gt 80 ] && color="\033[38;2;255;184;108m"
+        [ "$pct" -gt 90 ] && color="\033[38;2;255;85;85m"
+
+        # Bar
+        bw=15; filled=$((pct*bw/100)); empty=$((bw-filled))
+        bar=""; for ((i=0;i<filled;i++)); do bar+="█"; done; for ((i=0;i<empty;i++)); do bar+="░"; done
+
+        printf "  ${color}%-20s %6s %6s %6s  [%s] %s%%\033[0m\n" "${mount:0:20}" "$size" "$used" "$avail" "$bar" "$pct"
+    done
+
+    echo
+    echo -e "  \033[38;2;139;233;253m\033[1m  Drive Health\033[0m"
+    echo -e "  \033[38;2;98;114;164m  ────────────────────────\033[0m"
+    lsblk -d -o NAME,SIZE,MODEL,ROTA 2>/dev/null | tail -n +2 | while read name size model rota; do
+        type_icon=""
+        [ "$rota" = "0" ] && type_icon="󰋊 SSD" || type_icon=" HDD"
+        printf "    \033[38;2;139;233;253m%-6s\033[0m \033[38;2;248;248;242m%-8s\033[0m \033[38;2;241;250;140m%-6s\033[0m \033[38;2;98;114;164m%s\033[0m\n" "$name" "$size" "$type_icon" "$model"
+    done
+
+    echo
+    echo -e "  \033[38;2;98;114;164m  Refreshing every 30s  q=quit\033[0m"
+    read -rsn1 -t 30 key
+    [ "$key" = "q" ] && break
+done
+SCRIPT
+
+cat > "$D/disk_io.sh" << 'SCRIPT'
+#!/bin/bash
+if ! command -v iostat &>/dev/null; then
+    clear
+    echo -e "\033[38;2;255;184;108m\033[1m   Disk I/O\033[0m"
+    echo -e "\033[38;2;98;114;164m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+    echo
+    echo -e "  \033[38;2;98;114;164m  iostat not installed\033[0m"
+    echo -e "  \033[38;2;241;250;140m  Install: sudo pacman -S sysstat\033[0m"
+    read -rsn1
+    exit 0
+fi
+
+echo -e "\033[38;2;255;184;108m\033[1m   Disk I/O — Live\033[0m"
+echo -e "\033[38;2;98;114;164m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+exec iostat -xz --human 1 -d | sed -u \
+    -e 's/\(.*[89][0-9]\.[0-9]*%\)/\x1b[38;2;255;85;85m\1\x1b[0m/' \
+    -e 's/\(.*[5-7][0-9]\.[0-9]*%\)/\x1b[38;2;241;250;140m\1\x1b[0m/'
+SCRIPT
+
+# ═══════════════════════════════════════════════════════════════
+#  THERMALS
+# ═══════════════════════════════════════════════════════════════
+cat > "$D/thermals.sh" << 'SCRIPT'
+#!/bin/bash
+while true; do
+    clear
+    echo -e "\033[38;2;255;85;85m\033[1m  󰔏  Temperatures\033[0m"
+    echo -e "\033[38;2;98;114;164m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+    echo
+
+    echo -e "  \033[38;2;189;147;249m\033[1m  CPU\033[0m"
+    echo -e "  \033[38;2;98;114;164m  ────────────────────────\033[0m"
+    sensors -A 2>/dev/null | grep -A 3 'k10temp\|coretemp\|zenpower' | grep -E 'Tctl|Tdie|Core|Package' | while IFS= read -r line; do
+        temp=$(echo "$line" | grep -oP '\+\K[0-9]+' | head -1)
+        tc="\033[38;2;80;250;123m"
+        [ -n "$temp" ] && [ "$temp" -gt 65 ] && tc="\033[38;2;241;250;140m"
+        [ -n "$temp" ] && [ "$temp" -gt 80 ] && tc="\033[38;2;255;85;85m"
+        echo -e "    ${tc}${line}\033[0m"
+    done
+
+    echo
+    echo -e "  \033[38;2;189;147;249m\033[1m 󰢮 GPU\033[0m"
+    echo -e "  \033[38;2;98;114;164m  ────────────────────────\033[0m"
+    for f in /sys/class/drm/card*/device/hwmon/hwmon*/temp*_input; do
+        [ -f "$f" ] || continue
+        label_f="${f%_input}_label"
+        label=$(cat "$label_f" 2>/dev/null || echo "Sensor")
+        temp=$(($(cat "$f" 2>/dev/null || echo 0)/1000))
+        tc="\033[38;2;80;250;123m"
+        [ "$temp" -gt 70 ] && tc="\033[38;2;241;250;140m"
+        [ "$temp" -gt 85 ] && tc="\033[38;2;255;85;85m"
+        printf "    ${tc}%-15s %d°C\033[0m\n" "$label" "$temp"
+    done
+
+    echo
+    echo -e "  \033[38;2;189;147;249m\033[1m 󰋊 NVMe\033[0m"
+    echo -e "  \033[38;2;98;114;164m  ────────────────────────\033[0m"
+    for dev in /sys/class/nvme/nvme*; do
+        [ -d "$dev" ] || continue
+        name=$(basename "$dev")
+        temp_f=$(ls "$dev"/hwmon/hwmon*/temp1_input 2>/dev/null | head -1)
+        [ -f "$temp_f" ] || continue
+        temp=$(($(cat "$temp_f")/1000))
+        tc="\033[38;2;80;250;123m"
+        [ "$temp" -gt 50 ] && tc="\033[38;2;241;250;140m"
+        [ "$temp" -gt 70 ] && tc="\033[38;2;255;85;85m"
+        model=$(cat "$dev/model" 2>/dev/null | xargs)
+        printf "    ${tc}%-8s %d°C\033[0m  \033[38;2;98;114;164m%s\033[0m\n" "$name" "$temp" "$model"
+    done
+
+    echo
+    echo -e "  \033[38;2;189;147;249m\033[1m  Fan\033[0m"
+    echo -e "  \033[38;2;98;114;164m  ────────────────────────\033[0m"
+    for f in /sys/class/drm/card*/device/hwmon/hwmon*/fan*_input; do
+        [ -f "$f" ] || continue
+        rpm=$(cat "$f" 2>/dev/null || echo 0)
+        label_f="${f%_input}_label"
+        label=$(cat "$label_f" 2>/dev/null || echo "Fan")
+        fc="\033[38;2;80;250;123m"
+        [ "$rpm" -gt 1500 ] && fc="\033[38;2;241;250;140m"
+        [ "$rpm" -gt 2500 ] && fc="\033[38;2;255;85;85m"
+        printf "    ${fc}%-8s %d RPM\033[0m\n" "$label" "$rpm"
+    done
+
+    sleep 2
+done
+SCRIPT
+
+cat > "$D/cpu_freq.sh" << 'SCRIPT'
+#!/bin/bash
+while true; do
+    clear
+    echo -e "\033[38;2;139;233;253m\033[1m   CPU Frequency\033[0m"
+    echo -e "\033[38;2;98;114;164m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+    echo
+
+    core=0
+    for freq_f in /sys/devices/system/cpu/cpu*/cpufreq/scaling_cur_freq; do
+        [ -f "$freq_f" ] || continue
+        cur=$(($(cat "$freq_f")/1000))
+        max_f="${freq_f/scaling_cur_freq/scaling_max_freq}"
+        max=$(($(cat "$max_f" 2>/dev/null || echo 1)/1000))
+        [ "$max" -eq 0 ] && max=1
+        pct=$((cur*100/max))
+
+        fc="\033[38;2;80;250;123m"
+        [ "$pct" -gt 60 ] && fc="\033[38;2;241;250;140m"
+        [ "$pct" -gt 85 ] && fc="\033[38;2;255;184;108m"
+        [ "$pct" -gt 95 ] && fc="\033[38;2;255;85;85m"
+
+        bw=12; filled=$((pct*bw/100)); empty=$((bw-filled))
+        bar=""; for ((i=0;i<filled;i++)); do bar+="█"; done; for ((i=0;i<empty;i++)); do bar+="░"; done
+
+        printf "  ${fc}Core %2d  %4d MHz  [%s] %2d%%\033[0m\n" "$core" "$cur" "$bar" "$pct"
+        core=$((core+1))
+    done
+
+    echo
+    gov=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null)
+    boost=$(cat /sys/devices/system/cpu/cpufreq/boost 2>/dev/null)
+    echo -e "  \033[38;2;189;147;249mGovernor:\033[0m \033[38;2;248;248;242m${gov:-?}\033[0m"
+    if [ "$boost" = "1" ]; then
+        echo -e "  \033[38;2;189;147;249mBoost:\033[0m    \033[38;2;80;250;123mEnabled\033[0m"
+    else
+        echo -e "  \033[38;2;189;147;249mBoost:\033[0m    \033[38;2;255;85;85mDisabled\033[0m"
+    fi
+
+    sleep 1
+done
+SCRIPT
+
+# ═══════════════════════════════════════════════════════════════
+#  UPDATES
+# ═══════════════════════════════════════════════════════════════
+cat > "$D/updates.sh" << 'SCRIPT'
+#!/bin/bash
+while true; do
+    clear
+    echo -e "\033[38;2;189;147;249m\033[1m  󰏔  Pending Updates\033[0m"
+    echo -e "\033[38;2;98;114;164m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+    echo
+
+    if command -v checkupdates &>/dev/null; then
+        updates=$(checkupdates 2>/dev/null)
+        count=$(echo "$updates" | grep -c .)
+
+        if [ "$count" -gt 0 ]; then
+            uc="\033[38;2;255;184;108m"
+            [ "$count" -gt 20 ] && uc="\033[38;2;255;85;85m"
+            echo -e "  ${uc}\033[1m  $count packages available\033[0m"
+            echo
+            echo "$updates" | while read pkg old _ new; do
+                printf "    \033[38;2;139;233;253m%-30s\033[0m \033[38;2;255;85;85m%-15s\033[0m \033[38;2;80;250;123m%s\033[0m\n" "$pkg" "$old" "$new"
+            done | head -30
+        else
+            echo -e "  \033[38;2;80;250;123m\033[1m  System is up to date\033[0m"
+        fi
+    else
+        echo -e "  \033[38;2;98;114;164m  checkupdates not available\033[0m"
+        echo -e "  \033[38;2;241;250;140m  Install: sudo pacman -S pacman-contrib\033[0m"
+    fi
+
+    echo
+    echo -e "  \033[38;2;255;85;85m\033[1m  CVE Exposure\033[0m"
+    echo -e "  \033[38;2;98;114;164m  ────────────────────────\033[0m"
+    if command -v arch-audit &>/dev/null; then
+        arch-audit 2>/dev/null | while IFS= read -r line; do
+            if echo "$line" | grep -q 'High'; then
+                echo -e "    \033[38;2;255;85;85m$line\033[0m"
+            elif echo "$line" | grep -q 'Medium'; then
+                echo -e "    \033[38;2;255;184;108m$line\033[0m"
+            else
+                echo -e "    \033[38;2;241;250;140m$line\033[0m"
+            fi
+        done
+    else
+        echo -e "    \033[38;2;98;114;164march-audit not installed\033[0m"
+    fi
+
+    echo
+    echo -e "  \033[38;2;98;114;164m  Refreshing every 30min  q=quit\033[0m"
+    read -rsn1 -t 1800 key
+    [ "$key" = "q" ] && break
+done
+SCRIPT
+
+cat > "$D/pacman_log.sh" << 'SCRIPT'
+#!/bin/bash
+while true; do
+    clear
+    echo -e "\033[38;2;255;184;108m\033[1m   Recent Activity\033[0m"
+    echo -e "\033[38;2;98;114;164m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+    echo
+
+    echo -e "  \033[38;2;241;250;140m\033[1m  Last 7 Days\033[0m"
+    echo -e "  \033[38;2;98;114;164m  ────────────────────────\033[0m"
+    cutoff=$(date -d '7 days ago' +%Y-%m-%d 2>/dev/null || date +%Y-%m-%d)
+    grep -E '^\[' /var/log/pacman.log 2>/dev/null | while IFS= read -r line; do
+        date=$(echo "$line" | grep -oP '^\[\K[0-9]{4}-[0-9]{2}-[0-9]{2}')
+        [ -z "$date" ] && continue
+        [[ "$date" < "$cutoff" ]] && continue
+        if echo "$line" | grep -q 'installed'; then
+            echo -e "    \033[38;2;80;250;123m$line\033[0m"
+        elif echo "$line" | grep -q 'upgraded'; then
+            echo -e "    \033[38;2;241;250;140m$line\033[0m"
+        elif echo "$line" | grep -q 'removed'; then
+            echo -e "    \033[38;2;255;85;85m$line\033[0m"
+        fi
+    done | tail -30
+
+    echo
+    echo -e "  \033[38;2;139;233;253m\033[1m  AUR Packages\033[0m"
+    echo -e "  \033[38;2;98;114;164m  ────────────────────────\033[0m"
+    aur_count=$(pacman -Qm 2>/dev/null | wc -l)
+    echo -e "    \033[38;2;248;248;242m$aur_count AUR packages installed\033[0m"
+    pacman -Qm 2>/dev/null | while read pkg ver; do
+        printf "    \033[38;2;255;184;108m%-30s\033[0m \033[38;2;98;114;164m%s\033[0m\n" "$pkg" "$ver"
+    done | head -15
+
+    echo
+    orphans=$(pacman -Qdtq 2>/dev/null | wc -l)
+    if [ "$orphans" -gt 0 ]; then
+        echo -e "  \033[38;2;255;85;85m  $orphans orphaned packages\033[0m"
+    else
+        echo -e "  \033[38;2;80;250;123m  No orphaned packages\033[0m"
+    fi
+
+    echo
+    echo -e "  \033[38;2;98;114;164m  Refreshing every 30min  q=quit\033[0m"
+    read -rsn1 -t 1800 key
+    [ "$key" = "q" ] && break
+done
+SCRIPT
+
 chmod +x "$D"/*.sh
 
 # ═══════════════════════════════════════════════════════════════
@@ -412,6 +823,22 @@ new_tab [ DOCKER]
 layout horizontal
 launch $D/docker_ps.sh
 launch $D/docker_img.sh
+new_tab [󰢮 GPU]
+layout horizontal
+launch $D/gpu_stats.sh
+launch $D/gpu_vram.sh
+new_tab [󰋊 DISK]
+layout horizontal
+launch $D/disk_space.sh
+launch $D/disk_io.sh
+new_tab [󰔏 THERMALS]
+layout horizontal
+launch $D/thermals.sh
+launch $D/cpu_freq.sh
+new_tab [󰏔 UPDATES]
+layout horizontal
+launch $D/updates.sh
+launch $D/pacman_log.sh
 new_tab [ SHELL]
 layout vertical
 launch
@@ -421,4 +848,4 @@ EOF
 kitty --session "$SESSION" --override "startup_session=none" --title "Claude Board" &
 disown
 
-echo "Claude Board launched — 8 tabs"
+echo "Claude Board launched — 12 tabs"
