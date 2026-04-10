@@ -861,10 +861,10 @@ printf '%s\n' \
   "launch" \
   "launch" \
   "launch" \
-  "new_tab [$(printf '\U000F0085')SYS]" \
+  "new_tab [$(printf '\U000F0E7E')SYS]" \
   "layout stack" \
   "launch btop" \
-  "new_tab [$(printf '\U000F00F6')LOG]" \
+  "new_tab [$(printf '\U000F04CB')LOG]" \
   "layout horizontal" \
   "launch $D/logs_full.sh" \
   "launch $D/logs_warn.sh" \
@@ -872,15 +872,15 @@ printf '%s\n' \
   "layout horizontal" \
   "launch $D/net_conn.sh" \
   "launch $D/net_traffic.sh" \
-  "new_tab [$(printf '\U000F0132')SEC]" \
+  "new_tab [$(printf '\U000F0483')SEC]" \
   "layout horizontal" \
   "launch $D/sec_audit.sh" \
   "launch $D/sec_fw.sh" \
-  "new_tab [$(printf '\U000E0725')GIT]" \
+  "new_tab [$(printf '\U000F02A2')GIT]" \
   "layout horizontal" \
   "launch $D/git_status.sh" \
   "launch $D/git_log.sh" \
-  "new_tab [$(printf '\U000F0308')DOC]" \
+  "new_tab [$(printf '\U000F0868')DOC]" \
   "layout horizontal" \
   "launch $D/docker_ps.sh" \
   "launch $D/docker_img.sh" \
@@ -896,11 +896,11 @@ printf '%s\n' \
   "layout horizontal" \
   "launch $D/thermals.sh" \
   "launch $D/cpu_freq.sh" \
-  "new_tab [$(printf '\U000F03D4')UPD]" \
+  "new_tab [$(printf '\U000F0A70')UPD]" \
   "layout horizontal" \
   "launch $D/updates.sh" \
   "launch $D/pacman_log.sh" \
-  "new_tab [$(printf '\U000F0120')SH]" \
+  "new_tab [$(printf '\U000F018D')SH]" \
   "layout vertical" \
   "launch" \
   "launch" \
