@@ -1,67 +1,48 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # ──────────────────────────────────────────────────────────────
-#  claude_board.sh — Neon Board: 4 windows, Kitty Ctrl+Alt+0
+#  claude_board.sh — Native Kitty Claude Board
+#  Launch: Ctrl+Alt+0
 #
-#  Windows (Alt+Shift+← → or Alt+F1..F4):
-#    1 󰄛 claude   — 4-pane Claude Code grid
-#    2  monitor  — btop system dashboard
-#    3  logs     — live system logs
-#    4  shell    — 2 clean shells
-#
-#  Pane control (no prefix):
-#    Alt+1..4        jump to pane
-#    Alt+← → ↑ ↓    move between panes
-#    Alt+v / Alt+s   split vertical / horizontal
-#    Alt+z           zoom / unzoom
-#    Alt+Space       cycle layouts
-#    Ctrl+a H/J/K/L  resize pane
-#    Ctrl+a x        close pane
+#  Opens a new Kitty OS window with 4 tabs:
+#    Tab 1: Claude   — 4-pane grid
+#    Tab 2: Monitor  — btop
+#    Tab 3: Logs     — journalctl live + warnings
+#    Tab 4: Shell    — 2 shells side by side
 # ──────────────────────────────────────────────────────────────
 
-SESSION="claude-board"
-CLAUDE="/home/adj/.local/bin/claude"
+LOGS_FULL="/tmp/kitty_board_logs_full.sh"
+LOGS_WARN="/tmp/kitty_board_logs_warn.sh"
 
-# ── re-attach if already running ────────────────────────────
-if tmux has-session -t "$SESSION" 2>/dev/null; then
-    exec tmux attach-session -t "$SESSION"
-fi
+printf '#!/bin/bash\nexec journalctl -f --output=short-precise --no-hostname\n' > "$LOGS_FULL"
+printf '#!/bin/bash\nexec journalctl -f -p warning --no-hostname\n' > "$LOGS_WARN"
+chmod +x "$LOGS_FULL" "$LOGS_WARN"
 
-# ════════════════════════════════════════════════════════════
-#  WINDOW 1 — 󰄛 claude  (4-pane Claude grid)
-# ════════════════════════════════════════════════════════════
-tmux new-session  -d -s "$SESSION" -n "󰄛 claude"
+SESSION="/tmp/kitty_claude_board.session"
 
-tmux split-window -t "$SESSION:󰄛 claude"
-tmux split-window -t "$SESSION:󰄛 claude"
-tmux split-window -t "$SESSION:󰄛 claude"
-tmux select-layout -t "$SESSION:󰄛 claude" tiled
+# No comments, no blank lines, no special chars in tab names
+cat > "$SESSION" << EOF
+new_tab Claude
+layout grid
+launch
+launch
+launch
+launch
+focus_tab
+new_tab Monitor
+layout stack
+launch btop
+new_tab Logs
+layout horizontal
+launch $LOGS_FULL
+launch $LOGS_WARN
+new_tab Shell
+layout vertical
+launch
+launch
+EOF
 
-# ════════════════════════════════════════════════════════════
-#  WINDOW 2 —  monitor  (btop full screen)
-# ════════════════════════════════════════════════════════════
-tmux new-window -t "$SESSION" -n " monitor"
-tmux send-keys -t "$SESSION: monitor" "btop" Enter
+# --override to suppress startup_session from kitty.conf
+kitty --session "$SESSION" --override "startup_session=none" --title "Claude Board" &
+disown
 
-# ════════════════════════════════════════════════════════════
-#  WINDOW 3 —  logs  (live system journal + dmesg split)
-# ════════════════════════════════════════════════════════════
-tmux new-window -t "$SESSION" -n " logs"
-tmux send-keys -t "$SESSION: logs" \
-    "journalctl -f --output=short-precise --no-hostname" Enter
-tmux split-window -t "$SESSION: logs" -v -p 30
-tmux send-keys -t "$SESSION: logs" \
-    "journalctl -f -p warning --no-hostname" Enter
-
-# ════════════════════════════════════════════════════════════
-#  WINDOW 4 —  shell  (2 clean shells side by side)
-# ════════════════════════════════════════════════════════════
-tmux new-window -t "$SESSION" -n " shell"
-tmux split-window -t "$SESSION: shell" -h
-
-# ── return to window 1, focus first pane ────────────────────
-tmux select-window -t "$SESSION:󰄛 claude"
-first=$(tmux list-panes -t "$SESSION:󰄛 claude" -F "#{pane_id}" | head -1)
-tmux select-pane -t "$first"
-
-# ── attach ──────────────────────────────────────────────────
-exec tmux attach-session -t "$SESSION"
+echo "Claude Board launched"

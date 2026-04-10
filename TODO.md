@@ -2,17 +2,19 @@
 
 ## Bugs to Fix
 
-- [ ] **Session restore: tabs open with wrong title** — `save_session.py` uses `tab.get("title")` which returns the shell's dynamic title (e.g. `zsh: /home/adj`) instead of the user-set tab name. Need to use `tab.get("title")` only when it matches user-set name, or find a way to distinguish user-set titles from auto-generated ones. Kitty `@ls` returns `title` (user-set) and the window's `title` separately — need to check which field carries the user-set name.
+- [ ] **Context menu: full-screen overlay instead of popup** — Right-click opens a full-screen terminal overlay with the menu in the corner. Should behave like a native popup: compact floating box at cursor position, mouse-clickable items, auto-close on outside click. Current `--type=overlay` takes over entire terminal. Needs either: (a) GTK4 popup window approach (like magic_dust.py) positioned at cursor coords, or (b) fix the TUI overlay to actually handle mouse clicks on items. Mouse SGR tracking seems broken in overlay mode.
 
-- [ ] **Session restore: new tab opens on startup even when session file exists** — When `startup_session` is set but the session file has issues (empty lines, encoding), Kitty may ignore it silently and open a default tab. Add validation to `save_session.py` output.
+- [x] ~~Session restore: tabs open with wrong title~~ — NOT A BUG. `tab["title"]` in `kitty @ ls` IS the user-set title. Window-level `title` is the dynamic one.
 
-- [ ] **Context menu: right-click on Russian layout** — The mouse_map binding may not fire correctly when Cyrillic keyboard layout is active. Test and verify.
+- [x] ~~Session restore: new tab opens on startup~~ — FIXED. Added validation to save_session.py.
 
-- [ ] **Session restore: layout not preserved** — Currently hardcodes `layout stack` for every tab. Should save and restore the actual layout (tall, grid, horizontal, etc.) per tab.
+- [x] ~~Context menu: right-click on Russian layout~~ — NOT A BUG. Mouse buttons are layout-independent.
 
-- [ ] **Session restore: multiple windows per tab not saved** — If a tab has splits (multiple windows), only the first window's cwd is saved. Need to iterate all windows and generate `launch` directives for each.
+- [x] ~~Session restore: layout not preserved~~ — FIXED. Now saves actual layout per tab.
 
-- [ ] **Systemd shutdown service: may not fire reliably** — `Before=logout.target` may not trigger on all shutdown paths (e.g. `systemctl poweroff`). Consider also hooking into `shutdown.target`.
+- [x] ~~Session restore: multiple windows per tab~~ — FIXED. Iterates all windows.
+
+- [x] ~~Systemd shutdown service unreliable~~ — FIXED. RemainAfterExit + ExecStop pattern.
 
 ## Enhancements
 
@@ -32,7 +34,7 @@
 
 - [ ] **Hotkey overlay: make it searchable** — Press F1, then type to filter hotkeys (like VS Code command palette).
 
-- [ ] **Claude Board: auto-reconnect** — If tmux session dies, Ctrl+Alt+0 should recreate it rather than erroring.
+- [x] ~~Claude Board: rewrite as native Kitty~~ — DONE. Replaced tmux with kitty --session file. Opens new OS window with 4 tabs: grid claude, btop, logs, shell.
 
 ## New Plugins Wishlist
 
