@@ -28,6 +28,19 @@ def _write_pid():
 _kill_previous()
 _write_pid()
 
+# ── Get mouse position BEFORE GTK steals focus ───────────────
+_MOUSE_X, _MOUSE_Y = 100, 100
+try:
+    r = subprocess.run(['xdotool', 'getmouselocation'],
+                       capture_output=True, text=True, timeout=1)
+    for part in r.stdout.strip().split():
+        if part.startswith('x:'):
+            _MOUSE_X = int(part[2:])
+        elif part.startswith('y:'):
+            _MOUSE_Y = int(part[2:])
+except Exception:
+    pass
+
 import gi
 gi.require_version('Gtk', '4.0')
 gi.require_version('Gdk', '4.0')
@@ -149,6 +162,10 @@ class MenuWindow(Gtk.ApplicationWindow):
         self.set_decorated(False)
         self.set_resizable(False)
         self.set_default_size(260, -1)
+        self.set_title('kitty_context_menu')
+
+        # Move window to mouse position after it appears
+        self.connect('realize', self._move_to_cursor)
 
         vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
 
@@ -205,6 +222,21 @@ class MenuWindow(Gtk.ApplicationWindow):
 
         # Safety timeout — close after 15s
         GLib.timeout_add(15000, self._timeout)
+
+    def _move_to_cursor(self, widget):
+        """Move window to mouse cursor position using xdotool."""
+        def _do_move():
+            try:
+                # Find our window by title and move it
+                subprocess.run(
+                    ['xdotool', 'search', '--name', 'kitty_context_menu',
+                     'windowmove', '--', str(_MOUSE_X), str(_MOUSE_Y)],
+                    capture_output=True, timeout=2)
+            except Exception:
+                pass
+            return False
+        # Small delay to let the window appear
+        GLib.timeout_add(50, _do_move)
 
     def _on_item_click(self, gesture, n_press, x, y, callback):
         self._alive = False
