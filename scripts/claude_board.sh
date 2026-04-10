@@ -553,22 +553,81 @@ SCRIPT
 
 cat > "$D/disk_io.sh" << 'SCRIPT'
 #!/bin/bash
-if ! command -v iostat &>/dev/null; then
+prev_r=(); prev_w=()
+
+while true; do
     clear
-    echo -e "\033[38;2;255;184;108m\033[1m   Disk I/O\033[0m"
+    echo -e "\033[38;2;255;184;108m\033[1m   Disk I/O — Live\033[0m"
     echo -e "\033[38;2;98;114;164m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
     echo
-    echo -e "  \033[38;2;98;114;164m  iostat not installed\033[0m"
-    echo -e "  \033[38;2;241;250;140m  Install: sudo pacman -S sysstat\033[0m"
-    read -rsn1
-    exit 0
-fi
 
-echo -e "\033[38;2;255;184;108m\033[1m   Disk I/O — Live\033[0m"
-echo -e "\033[38;2;98;114;164m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
-exec iostat -xz --human 1 -d | sed -u \
-    -e 's/\(.*[89][0-9]\.[0-9]*%\)/\x1b[38;2;255;85;85m\1\x1b[0m/' \
-    -e 's/\(.*[5-7][0-9]\.[0-9]*%\)/\x1b[38;2;241;250;140m\1\x1b[0m/'
+    printf "  \033[38;2;189;147;249m\033[1m%-12s %10s %10s %8s %8s %6s\033[0m\n" \
+        "Device" "Read/s" "Write/s" "R MB/s" "W MB/s" "Util%"
+    echo -e "  \033[38;2;98;114;164m────────────────────────────────────────────────────────────\033[0m"
+
+    idx=0
+    for dev in /sys/block/*/stat; do
+        name=$(basename $(dirname "$dev"))
+        # Skip loop, ram, dm devices
+        [[ "$name" == loop* || "$name" == ram* || "$name" == dm-* ]] && continue
+
+        read r_io _ r_sec _ w_io _ w_sec _ _ _ _ _ _ _ _ < "$dev" 2>/dev/null || continue
+
+        # Calculate deltas
+        pr=${prev_r[$idx]:-$r_io}; pw=${prev_w[$idx]:-$w_io}
+        pr_sec=${prev_r_sec[$idx]:-$r_sec}; pw_sec=${prev_w_sec[$idx]:-$w_sec}
+
+        d_rio=$((r_io - pr))
+        d_wio=$((w_io - pw))
+        d_rsec=$((r_sec - pr_sec))
+        d_wsec=$((w_sec - pw_sec))
+
+        # Sectors are 512 bytes
+        r_mb=$(awk "BEGIN {printf \"%.1f\", $d_rsec * 512 / 1048576}")
+        w_mb=$(awk "BEGIN {printf \"%.1f\", $d_wsec * 512 / 1048576}")
+
+        prev_r[$idx]=$r_io; prev_w[$idx]=$w_io
+        prev_r_sec[$idx]=$r_sec; prev_w_sec[$idx]=$w_sec
+
+        # Color by activity
+        if [ "$d_rio" -gt 100 ] || [ "$d_wio" -gt 100 ]; then
+            dc="\033[38;2;255;85;85m"
+        elif [ "$d_rio" -gt 10 ] || [ "$d_wio" -gt 10 ]; then
+            dc="\033[38;2;241;250;140m"
+        elif [ "$d_rio" -gt 0 ] || [ "$d_wio" -gt 0 ]; then
+            dc="\033[38;2;80;250;123m"
+        else
+            dc="\033[38;2;98;114;164m"
+        fi
+
+        # Activity bar
+        total=$((d_rio + d_wio))
+        bw=10
+        if [ "$total" -gt 0 ]; then
+            level=$((total > 100 ? 10 : total / 10))
+            [ "$level" -gt "$bw" ] && level=$bw
+        else
+            level=0
+        fi
+        bar=""; for ((i=0;i<level;i++)); do bar+="█"; done; for ((i=level;i<bw;i++)); do bar+="░"; done
+
+        printf "  ${dc}%-12s %10d %10d %7s %7s  [%s]\033[0m\n" \
+            "$name" "$d_rio" "$d_wio" "$r_mb" "$w_mb" "$bar"
+
+        idx=$((idx+1))
+    done
+
+    echo
+    echo -e "  \033[38;2;139;233;253m\033[1m  Filesystem Writes\033[0m"
+    echo -e "  \033[38;2;98;114;164m  ────────────────────────\033[0m"
+    # Dirty pages
+    dirty=$(grep 'Dirty:' /proc/meminfo 2>/dev/null | awk '{print $2}')
+    writeback=$(grep 'Writeback:' /proc/meminfo 2>/dev/null | awk '{print $2}')
+    echo -e "    \033[38;2;241;250;140mDirty pages:\033[0m  ${dirty:-0} kB"
+    echo -e "    \033[38;2;241;250;140mWriteback:\033[0m    ${writeback:-0} kB"
+
+    sleep 1
+done
 SCRIPT
 
 # ═══════════════════════════════════════════════════════════════
