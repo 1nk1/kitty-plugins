@@ -8,25 +8,8 @@ Single instance — kills previous menu before opening new one.
 
 import subprocess
 import os
-import signal
 
-# ── Single instance: kill previous menu ──────────────────────
-_PIDFILE = '/tmp/kitty_context_menu.pid'
-
-def _kill_previous():
-    try:
-        with open(_PIDFILE) as f:
-            old_pid = int(f.read().strip())
-        os.kill(old_pid, signal.SIGTERM)
-    except (FileNotFoundError, ValueError, ProcessLookupError, PermissionError):
-        pass
-
-def _write_pid():
-    with open(_PIDFILE, 'w') as f:
-        f.write(str(os.getpid()))
-
-_kill_previous()
-_write_pid()
+# Single instance handled by context_menu_launch.sh (kills old PID before launching)
 
 import gi
 gi.require_version('Gtk', '4.0')
@@ -198,14 +181,14 @@ class MenuWindow(Gtk.ApplicationWindow):
         key_ctl.connect('key-pressed', self._on_key)
         self.add_controller(key_ctl)
 
-        # Close when clicking outside (focus loss)
         self._alive = True
-        focus_ctl = Gtk.EventControllerFocus()
-        focus_ctl.connect('leave', self._on_focus_out)
-        self.add_controller(focus_ctl)
+        # Don't use focus_leave — it fires immediately when launched
+        # from background and kills the window before user can see it.
+        # Instead, rely on: Escape key, clicking an item, or timeout.
+        # The single-instance PID lock ensures old menus die on re-click.
 
-        # Safety timeout — close after 15s
-        GLib.timeout_add(15000, self._timeout)
+        # Safety timeout — close after 8s
+        GLib.timeout_add(8000, self._timeout)
 
 
 
@@ -220,16 +203,6 @@ class MenuWindow(Gtk.ApplicationWindow):
             self._alive = False
             self.close()
             return True
-        return False
-
-    def _on_focus_out(self, ctl):
-        if self._alive:
-            GLib.timeout_add(150, self._maybe_close)
-
-    def _maybe_close(self):
-        if self._alive:
-            self._alive = False
-            self.close()
         return False
 
     def _timeout(self):
