@@ -793,57 +793,59 @@ chmod +x "$D"/*.sh
 # ═══════════════════════════════════════════════════════════════
 SESSION="/tmp/kitty_claude_board.session"
 
-cat > "$SESSION" << EOF
-new_tab [󰄛 CLAUDE]
-layout grid
-launch
-launch
-launch
-launch
-new_tab [ MONITOR]
-layout stack
-launch btop
-new_tab [ LOGS]
-layout horizontal
-launch $D/logs_full.sh
-launch $D/logs_warn.sh
-new_tab [󰛳 NETWORK]
-layout horizontal
-launch $D/net_conn.sh
-launch $D/net_traffic.sh
-new_tab [ SECURITY]
-layout horizontal
-launch $D/sec_audit.sh
-launch $D/sec_fw.sh
-new_tab [ GIT]
-layout horizontal
-launch $D/git_status.sh
-launch $D/git_log.sh
-new_tab [ DOCKER]
-layout horizontal
-launch $D/docker_ps.sh
-launch $D/docker_img.sh
-new_tab [󰢮 GPU]
-layout horizontal
-launch $D/gpu_stats.sh
-launch $D/gpu_vram.sh
-new_tab [󰋊 DISK]
-layout horizontal
-launch $D/disk_space.sh
-launch $D/disk_io.sh
-new_tab [󰔏 THERMALS]
-layout horizontal
-launch $D/thermals.sh
-launch $D/cpu_freq.sh
-new_tab [󰏔 UPDATES]
-layout horizontal
-launch $D/updates.sh
-launch $D/pacman_log.sh
-new_tab [ SHELL]
-layout vertical
-launch
-launch
-EOF
+# Use printf with \U escape to guarantee Nerd Font icons survive encoding
+# Icons: 󰄛=U+F011B =U+F085 =U+F0F6 󰛳=U+F06F3 =U+F132 =U+E725 =U+F308 󰢮=U+F08AE 󰋊=U+F02CA 󰔏=U+F050F 󰏔=U+F03D4 =U+F120
+printf '%s\n' \
+  "new_tab [$(printf '\U000F011B') CLAUDE]" \
+  "layout grid" \
+  "launch" \
+  "launch" \
+  "launch" \
+  "launch" \
+  "new_tab [$(printf '\U000F0085') MONITOR]" \
+  "layout stack" \
+  "launch btop" \
+  "new_tab [$(printf '\U000F00F6') LOGS]" \
+  "layout horizontal" \
+  "launch $D/logs_full.sh" \
+  "launch $D/logs_warn.sh" \
+  "new_tab [$(printf '\U000F06F3') NETWORK]" \
+  "layout horizontal" \
+  "launch $D/net_conn.sh" \
+  "launch $D/net_traffic.sh" \
+  "new_tab [$(printf '\U000F0132') SECURITY]" \
+  "layout horizontal" \
+  "launch $D/sec_audit.sh" \
+  "launch $D/sec_fw.sh" \
+  "new_tab [$(printf '\U000E0725') GIT]" \
+  "layout horizontal" \
+  "launch $D/git_status.sh" \
+  "launch $D/git_log.sh" \
+  "new_tab [$(printf '\U000F0308') DOCKER]" \
+  "layout horizontal" \
+  "launch $D/docker_ps.sh" \
+  "launch $D/docker_img.sh" \
+  "new_tab [$(printf '\U000F08AE') GPU]" \
+  "layout horizontal" \
+  "launch $D/gpu_stats.sh" \
+  "launch $D/gpu_vram.sh" \
+  "new_tab [$(printf '\U000F02CA') DISK]" \
+  "layout horizontal" \
+  "launch $D/disk_space.sh" \
+  "launch $D/disk_io.sh" \
+  "new_tab [$(printf '\U000F050F') THERMALS]" \
+  "layout horizontal" \
+  "launch $D/thermals.sh" \
+  "launch $D/cpu_freq.sh" \
+  "new_tab [$(printf '\U000F03D4') UPDATES]" \
+  "layout horizontal" \
+  "launch $D/updates.sh" \
+  "launch $D/pacman_log.sh" \
+  "new_tab [$(printf '\U000F0120') SHELL]" \
+  "layout vertical" \
+  "launch" \
+  "launch" \
+  > "$SESSION"
 
 kitty --session "$SESSION" --override "startup_session=none" --title "Claude Board" &
 disown
